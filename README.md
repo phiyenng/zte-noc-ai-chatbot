@@ -56,6 +56,14 @@ pnpm lint         # Run linter
 pnpm format       # Format code
 ```
 
+## Features
+
+- **AI Chat** - Multiple AI models (CS Minh, NPO Yen, CS AI)
+- **File Analysis** - Upload and analyze images, PDFs, text files
+- **OCR Support** - Extract text from images using Tesseract.js
+- **PDF Processing** - Extract text from PDF documents
+- **Authentication** - Secure user login system
+
 ## Tech Stack
 
 - **Next.js 15** - React framework
@@ -63,3 +71,5 @@ pnpm format       # Format code
 - **PostgreSQL** - Database
 - **Auth.js** - Authentication
 - **Tailwind CSS** - Styling
+- **Tesseract.js** - OCR for image text extraction
+- **PDF.js** - PDF text extraction

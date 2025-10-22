@@ -32,22 +32,64 @@ async function callInternalAI(messages: any[], modelId: string, sessionId?: stri
     throw new Error("No user message found in conversation");
   }
   
+  // Helper function to analyze file attachments
+  async function analyzeFileAttachment(part: any): Promise<string> {
+    if (part.type === 'file' && part.url) {
+      try {
+        const response = await fetch('/api/files/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: part.url,
+            contentType: part.mediaType,
+            fileName: part.name,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          return data.description || `File attached: ${part.name}`;
+        } else {
+          return `File attached: ${part.name} (analysis failed)`;
+        }
+      } catch (error) {
+        console.error(`[${modelId}] Error analyzing file:`, error);
+        return `File attached: ${part.name} (analysis error)`;
+      }
+    }
+    return '';
+  }
+
   if (typeof lastUserMessage.content === 'string') {
     userMessage = lastUserMessage.content;
   } else if (Array.isArray(lastUserMessage.content)) {
-    userMessage = lastUserMessage.content.map((part: any) => {
-      if (typeof part === 'string') return part;
-      if (part.text) return part.text;
-      if (part.content) return part.content;
-      return String(part);
-    }).join(' ');
+    const parts = await Promise.all(
+      lastUserMessage.content.map(async (part: any) => {
+        if (typeof part === 'string') return part;
+        if (part.text) return part.text;
+        if (part.content) return part.content;
+        if (part.type === 'file') {
+          return await analyzeFileAttachment(part);
+        }
+        return String(part);
+      })
+    );
+    userMessage = parts.filter(part => part.trim()).join('\n\n');
   } else if (lastUserMessage.parts && Array.isArray(lastUserMessage.parts)) {
-    userMessage = lastUserMessage.parts.map((part: any) => {
-      if (typeof part === 'string') return part;
-      if (part.text) return part.text;
-      if (part.content) return part.content;
-      return String(part);
-    }).join(' ');
+    const parts = await Promise.all(
+      lastUserMessage.parts.map(async (part: any) => {
+        if (typeof part === 'string') return part;
+        if (part.text) return part.text;
+        if (part.content) return part.content;
+        if (part.type === 'file') {
+          return await analyzeFileAttachment(part);
+        }
+        return String(part);
+      })
+    );
+    userMessage = parts.filter(part => part.trim()).join('\n\n');
   } else if (lastUserMessage.text) {
     userMessage = lastUserMessage.text;
   } else if (lastUserMessage.message) {
