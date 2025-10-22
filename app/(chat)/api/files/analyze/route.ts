@@ -6,7 +6,7 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 
 // Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 const AnalyzeRequestSchema = z.object({
   url: z.string().url(),
@@ -87,6 +87,12 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { url, contentType, fileName } = AnalyzeRequestSchema.parse(body);
+    
+    console.log('[file-analyze] Request received:', {
+      url: url.substring(0, 100) + '...',
+      contentType,
+      fileName
+    });
 
     let description = "";
     let extractedText = "";
@@ -101,7 +107,9 @@ export async function POST(request: Request) {
         description = `📷 Image uploaded: ${fileName || "image file"}\n\nNo text detected in the image.`;
       }
     } else if (contentType === "application/pdf") {
+      console.log('[file-analyze] Processing PDF file...');
       extractedText = await extractTextFromPDF(url);
+      console.log('[file-analyze] PDF text extracted:', extractedText.substring(0, 200) + '...');
       
       if (extractedText) {
         // Limit text length to avoid overwhelming the AI
@@ -109,8 +117,10 @@ export async function POST(request: Request) {
           ? extractedText.substring(0, 2000) + "..."
           : extractedText;
         description = `📄 PDF Analysis:\n\nDocument content:\n"${truncatedText}"`;
+        console.log('[file-analyze] PDF analysis complete, description length:', description.length);
       } else {
         description = `📄 PDF uploaded: ${fileName || "PDF file"}\n\nNo text content found in the PDF.`;
+        console.log('[file-analyze] No text found in PDF');
       }
     } else if (contentType.startsWith("text/")) {
       extractedText = await extractTextFromFile(url);

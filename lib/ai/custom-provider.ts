@@ -35,6 +35,12 @@ async function callInternalAI(messages: any[], modelId: string, sessionId?: stri
   // Helper function to analyze file attachments
   async function analyzeFileAttachment(part: any): Promise<string> {
     if (part.type === 'file' && part.url) {
+      console.log(`[${modelId}] Analyzing file attachment:`, {
+        name: part.name,
+        mediaType: part.mediaType,
+        url: part.url
+      });
+      
       try {
         const response = await fetch('/api/files/analyze', {
           method: 'POST',
@@ -48,15 +54,20 @@ async function callInternalAI(messages: any[], modelId: string, sessionId?: stri
           }),
         });
 
+        console.log(`[${modelId}] File analysis response status:`, response.status);
+
         if (response.ok) {
           const data = await response.json();
+          console.log(`[${modelId}] File analysis result:`, data);
           return data.description || `File attached: ${part.name}`;
         } else {
-          return `File attached: ${part.name} (analysis failed)`;
+          const errorText = await response.text();
+          console.error(`[${modelId}] File analysis failed:`, errorText);
+          return `File attached: ${part.name} (analysis failed: ${response.status})`;
         }
       } catch (error) {
         console.error(`[${modelId}] Error analyzing file:`, error);
-        return `File attached: ${part.name} (analysis error)`;
+        return `File attached: ${part.name} (analysis error: ${error instanceof Error ? error.message : String(error)})`;
       }
     }
     return '';
