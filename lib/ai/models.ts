@@ -1,4 +1,4 @@
-export const DEFAULT_CHAT_MODEL: string = "npo-yen-model";
+export const DEFAULT_CHAT_MODEL: string = "cs-minh-model";
 
 export type ChatModel = {
   id: string;
@@ -8,14 +8,14 @@ export type ChatModel = {
 
 export const chatModels: ChatModel[] = [
   {
-    id: "npo-yen-model",
-    name: "NPO Yen",
-    description: "NPO Yen AI Model - Specialized for Network Performance Optimization tasks",
-  },
-  {
     id: "cs-minh-model",
     name: "CS Minh",
     description: "CS Minh AI Model - Customer Service AI model developed by Minh",
+  },
+  {
+    id: "npo-yen-model",
+    name: "NPO Yen",
+    description: "NPO Yen AI Model - Specialized for Network Performance Optimization tasks",
   },
   {
     id: "cs-ai-model",

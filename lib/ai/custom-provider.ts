@@ -1,26 +1,15 @@
 import { customProvider } from "ai";
 import { getModelConfig } from "./model-configs";
 
-// Helper function để gọi API AI agent nội bộ
 async function callInternalAI(messages: any[], modelId: string, sessionId?: string) {
   const config = getModelConfig(modelId);
   
-  console.log(`[${modelId}] Model config:`, config);
-
   const apiUrl = `https://${config.serverIP}:${config.port}/api/ifactory-agent-run/v1/chat/api/${config.assetId}`;
   
-  // Tạo session ID nếu chưa có
   const currentSessionId = sessionId || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
-  // Chuyển đổi messages từ AI SDK format sang format của AI agent nội bộ
   let userMessage = "";
   
-  console.log(`[${modelId}] Raw messages:`, JSON.stringify(messages, null, 2));
-  console.log(`[${modelId}] Messages type:`, typeof messages);
-  console.log(`[${modelId}] Messages is array:`, Array.isArray(messages));
-  console.log(`[${modelId}] Messages length:`, messages?.length);
-  
-  // Kiểm tra và xử lý messages
   if (!messages) {
     console.error(`[${modelId}] Messages is null or undefined`);
     throw new Error("No messages provided to AI model");
@@ -36,69 +25,96 @@ async function callInternalAI(messages: any[], modelId: string, sessionId?: stri
     throw new Error("Messages array is empty");
   }
   
-  // Debug: Log tất cả messages để hiểu structure
-  console.log(`[${modelId}] All messages structure:`, messages.map((msg, index) => ({
-    index,
-    role: msg.role,
-    hasContent: 'content' in msg,
-    hasParts: 'parts' in msg,
-    contentType: typeof msg.content,
-    contentLength: Array.isArray(msg.content) ? msg.content.length : (msg.content ? String(msg.content).length : 0)
-  })));
-  
-  // Lấy message cuối cùng từ user
   const lastUserMessage = messages.filter(msg => msg.role === "user").pop();
-  console.log(`[${modelId}] Last user message:`, JSON.stringify(lastUserMessage, null, 2));
   
   if (!lastUserMessage) {
     console.error(`[${modelId}] No user message found in messages`);
     throw new Error("No user message found in conversation");
   }
   
-  // Xử lý content dựa trên cấu trúc của AI SDK
+  // Helper function to analyze file attachments
+  async function analyzeFileAttachment(part: any): Promise<string> {
+    if (part.type === 'file' && part.url) {
+      console.log(`[${modelId}] Analyzing file attachment:`, {
+        name: part.name,
+        mediaType: part.mediaType,
+        url: part.url
+      });
+      
+      try {
+        const response = await fetch('/api/files/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: part.url,
+            contentType: part.mediaType,
+            fileName: part.name,
+          }),
+        });
+
+        console.log(`[${modelId}] File analysis response status:`, response.status);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`[${modelId}] File analysis result:`, data);
+          return data.description || `File attached: ${part.name}`;
+        } else {
+          const errorText = await response.text();
+          console.error(`[${modelId}] File analysis failed:`, errorText);
+          return `File attached: ${part.name} (analysis failed: ${response.status})`;
+        }
+      } catch (error) {
+        console.error(`[${modelId}] Error analyzing file:`, error);
+        return `File attached: ${part.name} (analysis error: ${error instanceof Error ? error.message : String(error)})`;
+      }
+    }
+    return '';
+  }
+
   if (typeof lastUserMessage.content === 'string') {
     userMessage = lastUserMessage.content;
   } else if (Array.isArray(lastUserMessage.content)) {
-    userMessage = lastUserMessage.content.map((part: any) => {
-      if (typeof part === 'string') return part;
-      if (part.text) return part.text;
-      if (part.content) return part.content;
-      return String(part);
-    }).join(' ');
+    const parts = await Promise.all(
+      lastUserMessage.content.map(async (part: any) => {
+        if (typeof part === 'string') return part;
+        if (part.text) return part.text;
+        if (part.content) return part.content;
+        if (part.type === 'file') {
+          return await analyzeFileAttachment(part);
+        }
+        return String(part);
+      })
+    );
+    userMessage = parts.filter(part => part.trim()).join('\n\n');
   } else if (lastUserMessage.parts && Array.isArray(lastUserMessage.parts)) {
-    userMessage = lastUserMessage.parts.map((part: any) => {
-      if (typeof part === 'string') return part;
-      if (part.text) return part.text;
-      if (part.content) return part.content;
-      return String(part);
-    }).join(' ');
+    const parts = await Promise.all(
+      lastUserMessage.parts.map(async (part: any) => {
+        if (typeof part === 'string') return part;
+        if (part.text) return part.text;
+        if (part.content) return part.content;
+        if (part.type === 'file') {
+          return await analyzeFileAttachment(part);
+        }
+        return String(part);
+      })
+    );
+    userMessage = parts.filter(part => part.trim()).join('\n\n');
   } else if (lastUserMessage.text) {
-    // Fallback: nếu có property text trực tiếp
     userMessage = lastUserMessage.text;
   } else if (lastUserMessage.message) {
-    // Fallback: nếu có property message trực tiếp
     userMessage = lastUserMessage.message;
   } else {
     console.error(`[${modelId}] Unknown message content structure:`, lastUserMessage);
-    console.error(`[${modelId}] Available properties:`, Object.keys(lastUserMessage));
     throw new Error("Unknown message content structure");
   }
   
-  console.log(`[${modelId}] Extracted userMessage:`, userMessage);
-  
-  // Validate user message
   if (!userMessage || userMessage.trim() === '') {
     console.error(`[${modelId}] User message is empty after extraction`);
     throw new Error("User message cannot be empty");
   }
 
-  console.log(`[${modelId}] Sending message to ${apiUrl}:`, {
-    userMessage,
-    sessionId: currentSessionId,
-    config: { serverIP: config.serverIP, port: config.port, assetId: config.assetId, username: config.username, password: config.password }
-  });
-
-  // Sử dụng format đúng theo API documentation
   const payload = {
     sessionInfo: {
       sessionId: currentSessionId
@@ -109,10 +125,8 @@ async function callInternalAI(messages: any[], modelId: string, sessionId?: stri
   console.log(`[${modelId}] Request payload:`, JSON.stringify(payload, null, 2));
 
   try {
-    // Set environment variable để bỏ qua SSL verification
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
     
-    // Sử dụng headers đã test thành công
     const headers = {
       "Content-Type": "application/json",
       "username": config.username,
@@ -121,27 +135,19 @@ async function callInternalAI(messages: any[], modelId: string, sessionId?: stri
 
     console.log(`[${modelId}] Request headers:`, headers);
     
-    // Sử dụng fetch mặc định
     const response = await fetch(apiUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
     });
 
-    console.log(`[${modelId}] Response status:`, response.status);
-    console.log(`[${modelId}] Response ok:`, response.ok);
-
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[${modelId}] AI Agent API error: ${response.status} ${response.statusText}`, {
         url: apiUrl,
-        errorText,
-        requestPayload: payload,
-        requestHeaders: headers,
-        config: { serverIP: config.serverIP, port: config.port, assetId: config.assetId }
+        errorText
       });
-      
-      // Đặc biệt xử lý lỗi 400 để hiển thị chi tiết
+     
       if (response.status === 400) {
         throw new Error(`Bad Request (400): ${errorText}. Check request format and parameters.`);
       }
@@ -150,21 +156,17 @@ async function callInternalAI(messages: any[], modelId: string, sessionId?: stri
     }
 
     const data = await response.json();
-    console.log(`[${modelId}] AI Agent response:`, data);
     
-    // Kiểm tra nếu response có lỗi (format từ test results)
     if (data.content && data.content.includes("Error 704002")) {
       console.error(`[${modelId}] AI Agent returned error:`, data.content);
       throw new Error(`AI Agent error: ${data.content}`);
     }
 
-    // Kiểm tra nếu response có lỗi từ API (format: {'code': -1, 'message': '...'})
     if (data.content && data.content.includes("'code': -1")) {
       console.error(`[${modelId}] AI Agent returned API error:`, data.content);
       throw new Error(`AI Agent API error: ${data.content}`);
     }
 
-    // Kiểm tra nếu không có content
     if (!data.content) {
       console.warn(`[${modelId}] No content in response:`, data);
       return {
@@ -173,11 +175,8 @@ async function callInternalAI(messages: any[], modelId: string, sessionId?: stri
       };
     }
 
-    // Trả về content đã được clean up
     const cleanContent = data.content.trim();
     console.log(`[${modelId}] Cleaned content:`, cleanContent);
-
-    // Không cần extract title nữa vì đã sử dụng message text trực tiếp
 
     return {
       content: cleanContent,
@@ -189,7 +188,6 @@ async function callInternalAI(messages: any[], modelId: string, sessionId?: stri
   }
 }
 
-// Tạo custom language model cho AI agent nội bộ
 const createInternalAIModel = (modelId: string) => {
   return {
     provider: "custom",
@@ -197,10 +195,8 @@ const createInternalAIModel = (modelId: string) => {
     specificationVersion: "v2" as const,
     supportedUrls: {} as Record<string, RegExp[]>,
     
-    // Custom implementation cho AI SDK v2
     async doGenerate(options: any) {
       try {
-        // AI SDK v2 sử dụng 'prompt' thay vì 'messages'
         const { messages, prompt } = options;
         const messagesToUse = messages || prompt;
         
@@ -208,7 +204,6 @@ const createInternalAIModel = (modelId: string) => {
         console.log(`[${modelId}] doGenerate called with prompt:`, prompt);
         console.log(`[${modelId}] Using messagesToUse:`, messagesToUse);
         
-        // Debug: Log options để hiểu structure
         console.log(`[${modelId}] doGenerate options:`, JSON.stringify(options, null, 2));
         
         if (!messagesToUse) {
@@ -234,12 +229,10 @@ const createInternalAIModel = (modelId: string) => {
       }
     },
     
-    // Hỗ trợ streaming
     async doStream(options: any) {
       try {
         console.log(`[${modelId}] doStream called!`);
         
-        // AI SDK v2 sử dụng 'prompt' thay vì 'messages'
         const { messages, prompt } = options;
         const messagesToUse = messages || prompt;
         
@@ -247,7 +240,6 @@ const createInternalAIModel = (modelId: string) => {
         console.log(`[${modelId}] doStream called with prompt:`, prompt);
         console.log(`[${modelId}] Using messagesToUse:`, messagesToUse);
         
-        // Debug: Log options để hiểu structure
         console.log(`[${modelId}] doStream options:`, JSON.stringify(options, null, 2));
         
         if (!messagesToUse) {
@@ -259,16 +251,13 @@ const createInternalAIModel = (modelId: string) => {
         
         console.log(`[${modelId}] Streaming result:`, result);
         
-        // Tạo ReadableStream với format đúng cho AI SDK v2
         const stream = new ReadableStream({
           start(controller) {
             console.log(`[${modelId}] Starting stream with content length:`, result.content.length);
             
-            // Simulate streaming bằng cách chia response thành chunks nhỏ
             const words = result.content.split(' ');
             const streamId = `stream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             
-            // Gửi text-start event
             controller.enqueue({
               type: "text-start",
               id: streamId,
@@ -278,7 +267,6 @@ const createInternalAIModel = (modelId: string) => {
             
             const sendNextChunk = () => {
               if (index < words.length) {
-                // Gửi từng chunk nhỏ với delta property
                 controller.enqueue({
                   type: "text-delta",
                   id: streamId,
@@ -287,16 +275,13 @@ const createInternalAIModel = (modelId: string) => {
                 
                 index++;
                 
-                // Gửi chunk tiếp theo sau 50ms để simulate streaming
                 setTimeout(sendNextChunk, 50);
               } else {
-                // Gửi text-end event khi hoàn thành
                 controller.enqueue({
                   type: "text-end",
                   id: streamId,
                 });
                 
-                // Gửi finish event
                 controller.enqueue({
                   type: "finish",
                   finishReason: "stop",
@@ -310,7 +295,6 @@ const createInternalAIModel = (modelId: string) => {
               }
             };
             
-            // Bắt đầu streaming
             sendNextChunk();
           },
         });
@@ -326,7 +310,6 @@ const createInternalAIModel = (modelId: string) => {
   };
 };
 
-// Tạo custom provider
 export const internalAIProvider = customProvider({
   languageModels: {
     "npo-yen-model": createInternalAIModel("npo-yen-model"),
