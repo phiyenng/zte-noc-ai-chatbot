@@ -1,4 +1,3 @@
-import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -8,12 +7,20 @@ import { auth } from "@/app/(auth)/auth";
 const FileSchema = z.object({
   file: z
     .instanceof(Blob)
-    .refine((file) => file.size <= 5 * 1024 * 1024, {
-      message: "File size should be less than 5MB",
+    .refine((file) => file.size <= 10 * 1024 * 1024, {
+      message: "File size should be less than 10MB",
     })
-    // Update the file type based on the kind of files you want to accept
-    .refine((file) => ["image/jpeg", "image/png"].includes(file.type), {
-      message: "File type should be JPEG or PNG",
+    // Allow common file types
+    .refine((file) => {
+      const allowedTypes = [
+        "image/jpeg", "image/png", "image/gif", "image/webp",
+        "text/plain", "text/csv", "application/pdf",
+        "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ];
+      return allowedTypes.includes(file.type);
+    }, {
+      message: "File type not supported. Please upload images, text files, PDFs, or Office documents.",
     }),
 });
 
@@ -51,11 +58,15 @@ export async function POST(request: Request) {
     const fileBuffer = await file.arrayBuffer();
 
     try {
-      const data = await put(`${filename}`, fileBuffer, {
-        access: "public",
+      // For now, return a mock URL since Vercel Blob is not configured
+      // In production, you would use: const data = await put(filename, fileBuffer, { access: "public" });
+      const mockUrl = `data:${file.type};base64,${Buffer.from(fileBuffer).toString('base64')}`;
+      
+      return NextResponse.json({
+        url: mockUrl,
+        pathname: filename,
+        contentType: file.type,
       });
-
-      return NextResponse.json(data);
     } catch (_error) {
       return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }

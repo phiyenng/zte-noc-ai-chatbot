@@ -21,10 +21,10 @@ function PureSuggestedActions({ chatId, sendMessage }: SuggestedActionsProps) {
   }, []);
 
   const suggestedActions = [
-    "What are the advantages of using Next.js?",
-    "Write code to demonstrate Dijkstra's algorithm",
-    "Help me write an essay about Silicon Valley",
-    "What is the weather in San Francisco?",
+    "How to turn on 5G flag on RAN System?",
+    "What is IMSI?",
+    "What is Event A5?",
+    "What is UME?",
   ];
 
   // Prevent hydration mismatch by not rendering until client-side
