@@ -1,4 +1,4 @@
-export const DEFAULT_CHAT_MODEL: string = "chat-model";
+export const DEFAULT_CHAT_MODEL: string = "npo-yen-model";
 
 export type ChatModel = {
   id: string;
@@ -8,14 +8,18 @@ export type ChatModel = {
 
 export const chatModels: ChatModel[] = [
   {
-    id: "chat-model",
-    name: "Grok Vision",
-    description: "Advanced multimodal model with vision and text capabilities",
+    id: "npo-yen-model",
+    name: "NPO Yen",
+    description: "NPO Yen AI Model - Specialized for Network Performance Optimization tasks",
   },
   {
-    id: "chat-model-reasoning",
-    name: "Grok Reasoning",
-    description:
-      "Uses advanced chain-of-thought reasoning for complex problems",
+    id: "cs-minh-model",
+    name: "CS Minh",
+    description: "CS Minh AI Model - Customer Service AI model developed by Minh",
+  },
+  {
+    id: "cs-ai-model",
+    name: "CS AI",
+    description: "CS AI Model - General Customer Service AI model",
   },
 ];

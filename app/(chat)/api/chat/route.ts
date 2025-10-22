@@ -22,10 +22,6 @@ import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import type { ChatModel } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { myProvider } from "@/lib/ai/providers";
-import { createDocument } from "@/lib/ai/tools/create-document";
-import { getWeather } from "@/lib/ai/tools/get-weather";
-import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
-import { updateDocument } from "@/lib/ai/tools/update-document";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
@@ -133,6 +129,7 @@ export async function POST(request: Request) {
     } else {
       const title = await generateTitleFromUserMessage({
         message,
+        selectedChatModel,
       });
 
       await saveChat({
@@ -144,7 +141,11 @@ export async function POST(request: Request) {
     }
 
     const messagesFromDb = await getMessagesByChatId({ id });
+    console.log('[chat-route] messagesFromDb:', JSON.stringify(messagesFromDb, null, 2));
+    console.log('[chat-route] message:', JSON.stringify(message, null, 2));
+    
     const uiMessages = [...convertToUIMessages(messagesFromDb), message];
+    console.log('[chat-route] uiMessages:', JSON.stringify(uiMessages, null, 2));
 
     const { longitude, latitude, city, country } = geolocation(request);
 
@@ -175,30 +176,18 @@ export async function POST(request: Request) {
 
     const stream = createUIMessageStream({
       execute: ({ writer: dataStream }) => {
+        const modelMessages = convertToModelMessages(uiMessages);
+        console.log('[chat-route] modelMessages:', JSON.stringify(modelMessages, null, 2));
+        console.log('[chat-route] selectedChatModel:', selectedChatModel);
+        console.log('[chat-route] About to call streamText...');
+        
         const result = streamText({
           model: myProvider.languageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
-          messages: convertToModelMessages(uiMessages),
+          messages: modelMessages,
           stopWhen: stepCountIs(5),
-          experimental_activeTools:
-            selectedChatModel === "chat-model-reasoning"
-              ? []
-              : [
-                  "getWeather",
-                  "createDocument",
-                  "updateDocument",
-                  "requestSuggestions",
-                ],
+          experimental_activeTools: [],
           experimental_transform: smoothStream({ chunking: "word" }),
-          tools: {
-            getWeather,
-            createDocument: createDocument({ session, dataStream }),
-            updateDocument: updateDocument({ session, dataStream }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
-            }),
-          },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
             functionId: "stream-text",

@@ -5,7 +5,9 @@ import {
   wrapLanguageModel,
 } from "ai";
 import { isTestEnvironment } from "../constants";
+import { internalAIProvider } from "./custom-provider";
 
+// Sử dụng AI agent nội bộ thay vì external providers
 export const myProvider = isTestEnvironment
   ? (() => {
       const {
@@ -16,21 +18,10 @@ export const myProvider = isTestEnvironment
       } = require("./models.mock");
       return customProvider({
         languageModels: {
-          "chat-model": chatModel,
-          "chat-model-reasoning": reasoningModel,
-          "title-model": titleModel,
-          "artifact-model": artifactModel,
+          "npo-yen-model": chatModel,
+          "cs-ai-model": reasoningModel,
+          "cs-minh-model": titleModel,
         },
       });
     })()
-  : customProvider({
-      languageModels: {
-        "chat-model": gateway.languageModel("xai/grok-2-vision-1212"),
-        "chat-model-reasoning": wrapLanguageModel({
-          model: gateway.languageModel("xai/grok-3-mini"),
-          middleware: extractReasoningMiddleware({ tagName: "think" }),
-        }),
-        "title-model": gateway.languageModel("xai/grok-2-1212"),
-        "artifact-model": gateway.languageModel("xai/grok-2-1212"),
-      },
-    });
+  : internalAIProvider;
